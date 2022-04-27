@@ -9,10 +9,11 @@ This is a MaxSAT-based tool for the Qubit Mapping and Routing Problem
 
      ```$ git submodule update --init --recursive```
 
-2. Build the MaxSAT solver
+2. Build the MaxSAT solver. Make sure you have [GMP](https://gmplib.org/) installed. Then build with:
     ```
     $ cd mapper/lib/Open-WBO-Inc/
     $ make r
     ```
+    
 # Usage
     
