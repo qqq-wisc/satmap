@@ -348,7 +348,7 @@ def solve(progName, cm, swapNum, chunks, iterations=100, time_wbo_max = 10, qaoa
             if time_wbo_max:
                 solve_time_rem = time_wbo_max-time_elapsed_wbo 
             try:
-               p = subprocess.Popen(["./open-wbo-inc_static", "-algorithm=8", "-iterations="+str(iterations), pname+"-"+str(currentChunk)+".cnf"],  stdout=open( sname + "-chnk0" + ".txt", "w"))
+               p = subprocess.Popen(["./lib/Open-WBO-Inc/open-wbo-inc_release", "-algorithm=8", "-iterations="+str(iterations), pname+"-"+str(currentChunk)+".cnf"],  stdout=open( sname + "-chnk0" + ".txt", "w"))
                p.wait(timeout=solve_time_rem/(chunks-currentChunk))
             except subprocess.TimeoutExpired:
                 print("exiting open-wbo because of solve time alloted...")
@@ -375,7 +375,7 @@ def solve(progName, cm, swapNum, chunks, iterations=100, time_wbo_max = 10, qaoa
             if time_wbo_max:
                 solve_time_rem = time_wbo_max-time_elapsed_wbo 
             try:
-                p = subprocess.Popen(["./open-wbo-inc_static", "-algorithm=8", "-iterations="+str(iterations), pname+"-"+str(currentChunk)+".cnf"], stdout=open(sname + "-chnk" + str(currentChunk) + ".txt", "w"))
+                p = subprocess.Popen(["./lib/Open-WBO-Inc/open-wbo-inc_release", "-algorithm=8", "-iterations="+str(iterations), pname+"-"+str(currentChunk)+".cnf"], stdout=open(sname + "-chnk" + str(currentChunk) + ".txt", "w"))
                 p.wait(timeout=solve_time_rem/(chunks-currentChunk))
             except subprocess.TimeoutExpired:
                 print("exiting open-wbo because of solve time alloted...")

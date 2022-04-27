@@ -1,0 +1,3 @@
+[submodule "lib/Open-WBO-Inc"]
+	path = lib/Open-WBO-Inc
+	url = https://github.com/sbjoshi/Open-WBO-Inc.git
