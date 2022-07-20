@@ -1,6 +1,8 @@
+from platform import architecture
 import numpy as np
 import json
 import random
+from qiskit.test.mock import FakeTokyo
 
 triangle = np.array([[0,1,0], [0,0,1], [1,0,0]])
 ibmqx4 = np.array([[0,0,0,0,0],[1,0,0,0,0], [1,1,0,0,0], [0,0,1,0,1],[0,0,1,0,0]])
@@ -116,7 +118,14 @@ def tokyo_plus(squareList):
             graph[bottomLeft][topRight] = 1
     return graph
 
-                
+def tokyo_drop_worst_n(n, err_rates_map):
+    graph = np.copy(ibmTokyo)
+    worst_n = dict(sorted(err_rates_map.items(), key=lambda item: item[1], reverse=True)[:2*n]).keys()
+    for (u,v) in np.argwhere(graph > 0):
+        if (u,v) in worst_n:
+            graph[u][v] = 0
+            graph[v][u] = 0
+    return graph 
                 
 def generateMQTFile(cm, fname):
     with open(fname, "w") as f:
@@ -135,3 +144,40 @@ def generateEnfFile(cm, fname):
         json.dump(obj, f)
 
         
+def tokyo_error_list():
+    return list(tokyo_error_map().values()) 
+
+def tokyo_error_map():
+    AVG = 0.03130722830688227
+    errs = {}
+    backend = FakeTokyo()
+    props = backend.properties()
+    for edge in np.argwhere(ibmTokyo > 0):
+        if list(edge) in backend.configuration().coupling_map:
+            errs[tuple(edge)]= props.gate_error('cx', edge)
+        else:errs[tuple(edge)]= AVG
+    return errs
+
+def fake_linear_error_map():
+    vals = [ 0.0120651070, 0.0120651070, 0.0219138264,0.0219138264, 0.0353320709,0.0353320709, 0.0434709196,0.0434709196, 0.0446780968, 0.0446780968]
+    arch = linearArch(6)
+    edges = [tuple(edge) for edge in np.argwhere(arch>0)]
+    return dict(zip(edges, vals))
+
+def fake_linear_error_list():
+    return list(fake_linear_error_map().values()) 
+
+def write_triq_files(error_map):
+    with open("ibmtokyo_T.rlb", 'w') as f:
+        f.write(str(len(error_map))+"\n")
+        for (edge, error_rate) in error_map.items():
+            f.write(str(edge[0]) + " " + str(edge[1]) + " " + str(1-error_rate) + "\n")
+    with open("ibmtokyo_M.rlb", 'w') as f:
+        f.write("20\n")
+        for i in range(20):
+            f.write(str(i) + " 1.0" + "\n")
+    with open("ibmtokyo_S.rlb", 'w') as f:
+        f.write("20\n")
+        for i in range(20):
+            f.write(str(i) + " 1.0" + "\n")
+    
