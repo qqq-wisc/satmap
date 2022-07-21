@@ -388,10 +388,10 @@ def solve(progName, cm, swapNum, chunks, iterations=100, time_wbo_max = 600, qao
     logNum = extractQbits(progName)
     return_results = {}
     hack = qiskit.QuantumCircuit.from_qasm_file(progName)
-    (head, tail) = os.path.split(progName)
-    with open(os.path.join(head, "qiskit-" + tail), "w") as f:
+    file_name = os.path.basename(progName)
+    with open(os.path.join("aux_files/", "qiskit-" + file_name), "w") as f:
         f.write(hack.qasm())
-    cnots = extractCNOTs(os.path.join(head, "qiskit-" + tail))
+    cnots = extractCNOTs(os.path.join("aux_files/", "qiskit-" + file_name))
     sorted_cnots = sortCnots(logNum, cnots)
     numCnots = len(cnots)
 
@@ -428,7 +428,7 @@ def solve(progName, cm, swapNum, chunks, iterations=100, time_wbo_max = 600, qao
             if time_wbo_max:
                 solve_time_rem = time_wbo_max-time_elapsed_wbo 
             try:
-               p = subprocess.Popen(["../lib/Open-WBO-Inc/open-wbo-inc_release",   "-iterations="+str(iterations), pname+"-chnk"+str(currentChunk)+".cnf"],  stdout=open( sname + "-chnk0" + ".txt", "w"))
+               p = subprocess.Popen(["lib/Open-WBO-Inc/open-wbo-inc_release",   "-iterations="+str(iterations), pname+"-chnk"+str(currentChunk)+".cnf"],  stdout=open( sname + "-chnk0" + ".txt", "w"))
                p.wait(timeout=solve_time_rem/(chunks-currentChunk))
             except subprocess.TimeoutExpired:
                 print("exiting open-wbo because of solve time alloted...")
@@ -455,7 +455,7 @@ def solve(progName, cm, swapNum, chunks, iterations=100, time_wbo_max = 600, qao
             if time_wbo_max:
                 solve_time_rem = time_wbo_max-time_elapsed_wbo 
             try:
-                p = subprocess.Popen(["../lib/Open-WBO-Inc/open-wbo-inc_release", "-iterations="+str(iterations), pname+"-chnk"+str(currentChunk)+".cnf"], stdout=open(sname + "-chnk" + str(currentChunk) + ".txt", "w"))
+                p = subprocess.Popen(["lib/Open-WBO-Inc/open-wbo-inc_release", "-iterations="+str(iterations), pname+"-chnk"+str(currentChunk)+".cnf"], stdout=open(sname + "-chnk" + str(currentChunk) + ".txt", "w"))
                 p.wait(timeout=solve_time_rem/(chunks-currentChunk))
             except subprocess.TimeoutExpired:
                 print("exiting open-wbo because of solve time alloted...")

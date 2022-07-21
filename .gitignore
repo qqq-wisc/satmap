@@ -1,0 +1,3 @@
+aux_files/*
+results/*
+src/__pycache__/
