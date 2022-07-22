@@ -1,0 +1,1 @@
+while read i ; do echo $i; python3 src/experiment_runner.py $i ; done < $1

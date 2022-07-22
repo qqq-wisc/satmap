@@ -151,7 +151,7 @@ def run_tket(file_path, arch, timeout=None):
 
 def run_mqt(file_path, arch, timeout=None, method_mqt = None):
     # mqt
-    architectures.generateMQTFile(arch, "jku_arch_file.txt")
+    architectures.generateMQTFile(arch, "aux_files/jku_arch_file.txt")
     results = {}
 
     time_init = time()
@@ -160,10 +160,10 @@ def run_mqt(file_path, arch, timeout=None, method_mqt = None):
     if timeout:
         signal.alarm(args.timeout) 
     if method_mqt:
-        output = mqt.qmap.compile(file_path, "jku_arch_file.txt", method=method_mqt)
+        (qiskit_obj, output) = mqt.qmap.compile(file_path, "aux_files/jku_arch_file.txt", method=method_mqt)
         results['method'] = method_mqt
     else:
-        output = mqt.qmap.compile(file_path, "jku_arch_file.txt")
+        (qiskit_obj, output) = mqt.qmap.compile(file_path, "aux_files/jku_arch_file.txt")
         results['method'] = "default"
     is_mapping = False
     time_final = time()
@@ -179,6 +179,8 @@ def run_mqt(file_path, arch, timeout=None, method_mqt = None):
     results['time_reported'] = statistics['mapping_time']
     return results
 
+def run_mqt_exact(file_path, arch, timeout=None):
+    return run_mqt(file_path, arch, timeout, method_mqt='exact')
 
 def run_sabre(file_path, arch, timeout=None):
     # sabre
@@ -380,7 +382,7 @@ def run_mapper(input_program_path, mapper, arch, args=None):
     rid = f'RID-{args.run_id}.' if args and args.run_id else ""
 
     # Obtain specs of input program to compare with results
-    print(input_program_path)
+    print("Program:", input_program_path)
     circ_init = circuit_from_qasm(input_program_path)
     qbits_init_num = extractQbits(input_program_path)
     gates_init_num = count_atomic_gates(
@@ -390,6 +392,7 @@ def run_mapper(input_program_path, mapper, arch, args=None):
     mappers = {
         'tket': run_tket, 
         'mqt': run_mqt, 
+        'mqt_exact' : run_mqt_exact,
         'sabre': run_sabre, 
         'olsq': run_olsq,
         'enfield': run_enfield,
@@ -472,13 +475,21 @@ def run_mapper(input_program_path, mapper, arch, args=None):
 
 
 def run_all_mappers(input_program_path, arch, args=None):
-    mappers = ['tket', 'mqt', 'sabre', 
+    mappers = [
+    'tket', 
+    'mqt_exact', 
+    'sabre', 
     #'enfield', #TEMPORARILY DISABLED
-               'olsq', 'solveSwapsFF']
+    'olsq', 
+    #'solveSwapsFF'
+    ]
 
     for mapper in mappers:
-        run_mapper(input_program_path, mapper, arch, args)
-                
+        print("Tool:", mapper)
+        try:
+            run_mapper(input_program_path, mapper, arch, args)    
+        except:
+            print(mapper, "failed!")     
 
 if __name__ == '__main__':
     # Please type `python3 rq2script.py -h` for help with args :)
@@ -487,7 +498,7 @@ if __name__ == '__main__':
     parser.add_argument("--mapper", help="name of mapper used to map input program", choices=['tket', 'mqt', 'sabre', 'olsq', 'solveSwapsFF', 'solveSwapsFF_old']) #enfield currently disabled for CHTC
     parser.add_argument("-o_d", "--output_dir", help="directory for output files")
     parser.add_argument("-a", "--arch", choices=["tokyo", "toronto", "4x4_mesh", "16_linear", 'small_linear', "tokyo_full_diags", "tokyo_no_diags", 'tokyo_drop_2', 'tokyo_drop_6', 'tokyo_drop_10', 'tokyo_drop_14'], help="name of qc architecture")
-    parser.add_argument("-to", "--timeout", type=int, help="maximum run time for a mapper in seconds")
+    parser.add_argument("-to", "--timeout", type=int, default=3600, help="maximum run time for a mapper in seconds")
     parser.add_argument("-rid", "--run_id", help="ID to uniquely identify this run (if necessary)")
     parser.add_argument("--k", type=int, default=25, help="SolveSwapsFF: k-value")
     parser.add_argument("--towbo", type=int, help="maximum run time for maxsat solver in seconds")
