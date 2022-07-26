@@ -1,1 +1,0 @@
-for EX in examples/medium_benchmarks/*; do echo $VAR_ARGS; python3 src/experiment_runner.py $EX; done

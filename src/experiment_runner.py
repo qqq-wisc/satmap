@@ -160,10 +160,10 @@ def run_mqt(file_path, arch, timeout=None, method_mqt = None):
     if timeout:
         signal.alarm(args.timeout) 
     if method_mqt:
-        (qiskit_obj, output) = mqt.qmap.compile(file_path, "aux_files/jku_arch_file.txt", method=method_mqt)
+        output = mqt.qmap.compile(file_path, "aux_files/jku_arch_file.txt", method=method_mqt)
         results['method'] = method_mqt
     else:
-        (qiskit_obj, output) = mqt.qmap.compile(file_path, "aux_files/jku_arch_file.txt")
+        output = mqt.qmap.compile(file_path, "aux_files/jku_arch_file.txt")
         results['method'] = "default"
     is_mapping = False
     time_final = time()
@@ -268,8 +268,6 @@ def run_olsq(file_path, arch, objectiveFunction = "swap", calibrationData=None, 
 
     results['time'] = time_final - time_init
     results['output_qasm'] = result_circuit
-    # with open('benchmarking_outputs/output_olsq.qasm', "w") as f:
-    #     f.write(result_circuit)
     results['gate_counts'] = None
     results['objective value'] = math.exp(objective_value/1000)
     return results
@@ -431,16 +429,6 @@ def run_mapper(input_program_path, mapper, arch, args=None):
     else:
             results = mappers[mapper](input_program_path, archs[arch])
 
-    # except Exception as e:
-        
-    #     print(e)
-    #     # An exception was raised when time was done and mapper was still running
-    #     # Write a .txt informing the user of a timeout and return
-    #     with open(f'{output_path}/output.{mapper}.{arch}.{rid}txt', "w+") as f:
-    #         timeout_metrics = {'timeout': args.timeout}
-    #         f.write(str(timeout_metrics))
-    #     return
-
     is_mapping = False
 
     # Once we've run our mapper, we store results
@@ -477,25 +465,25 @@ def run_mapper(input_program_path, mapper, arch, args=None):
 def run_all_mappers(input_program_path, arch, args=None):
     mappers = [
     'tket', 
-    'mqt_exact', 
-    'sabre', 
+    #'mqt',
+   # 'mqt_exact', 
+    #'sabre', 
     #'enfield', #TEMPORARILY DISABLED
-    'olsq', 
-    #'solveSwapsFF'
+    #'olsq', 
+    'solveSwapsFF'
     ]
 
     for mapper in mappers:
         print("Tool:", mapper)
         try:
             run_mapper(input_program_path, mapper, arch, args)    
-        except:
-            print(mapper, "failed!")     
-
+        except Exception as e:
+            print(e)
+            print(mapper, "failed!")    
 if __name__ == '__main__':
-    # Please type `python3 rq2script.py -h` for help with args :)
     parser = argparse.ArgumentParser()
     parser.add_argument("prog", help="path to input program file")
-    parser.add_argument("--mapper", help="name of mapper used to map input program", choices=['tket', 'mqt', 'sabre', 'olsq', 'solveSwapsFF', 'solveSwapsFF_old']) #enfield currently disabled for CHTC
+    parser.add_argument("--mapper", help="name of mapper used to map input program", choices=['tket', 'mqt', 'sabre', 'olsq', 'mqt_exact', 'solveSwapsFF', 'solveSwapsFF_old']) #enfield currently disabled for CHTC
     parser.add_argument("-o_d", "--output_dir", help="directory for output files")
     parser.add_argument("-a", "--arch", choices=["tokyo", "toronto", "4x4_mesh", "16_linear", 'small_linear', "tokyo_full_diags", "tokyo_no_diags", 'tokyo_drop_2', 'tokyo_drop_6', 'tokyo_drop_10', 'tokyo_drop_14'], help="name of qc architecture")
     parser.add_argument("-to", "--timeout", type=int, default=3600, help="maximum run time for a mapper in seconds")
@@ -512,7 +500,6 @@ if __name__ == '__main__':
 
     arch = None
     if args.arch == None:
-        # arch = architectures.ibmToronto
         arch = "tokyo"
     else:
         arch = args.arch
@@ -525,4 +512,9 @@ if __name__ == '__main__':
         except MemoryError:
             print("out of memory")
     else:
-        run_all_mappers(args.prog, arch, args=args)
+        soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+        resource.setrlimit(resource.RLIMIT_AS, (4096*10**6, hard))
+        try: 
+            run_all_mappers(args.prog, arch, args=args)
+        except MemoryError:
+            print("out of memory")
