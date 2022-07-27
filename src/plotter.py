@@ -64,13 +64,13 @@ def build_dicts_constraint_based():
                 output_file_split = output_file.name.split('.')
                 if not output_file_split[-1] == 'txt':
                     continue
-                solver output_file_split[1]
+                solver = output_file_split[1]
                 arch = output_file_split[2]
                 with open(output_file.path) as f:
                     data = f.read()
                 output_file_dict = ast.literal_eval(data) 
                 
-                if 'timeout' in output_file_dict.keys() or output_file_dict["g_add"] < -100::
+                if 'timeout' in output_file_dict.keys() or output_file_dict["g_add"] < -100:
                     continue
                 else:
                     if solver == 'solveSwapsFF':
@@ -111,7 +111,8 @@ def plot_against_heuristic(res_dicts_us_cost, res_dicts_heuristic, name_str):
     plt.title(name_str)
     plt.tight_layout()
     leg = plt.legend()
-    points.figure.savefig(f"rq2_{name_str}.pdf", bbox_inches='tight', pad_inches=0.01)  
+    points.figure.savefig(f"fig11_{name_str}.pdf", bbox_inches='tight', pad_inches=0.01) 
+    plt.close() 
 
 def plot_olsq(res_dicts_us, res_dicts_olsq):
     intersection = [key  for key in res_dicts_olsq["tokyo"].keys() & res_dicts_us["tokyo"].keys()]
@@ -128,9 +129,10 @@ def plot_olsq(res_dicts_us, res_dicts_olsq):
     plt.yscale('log')
     plt.xticks(rotation=45, horizontalalignment='right')
     barchart.set(ylabel = "time (s)")
-    barchart.savefig("rq1_barchart_all.pdf") 
+    barchart.savefig("rq1_barchart_all.pdf")
+    plt.close() 
 
-def plot_jku(res_dicts_us_cost, res_dicts_tket, res_dicts_sabre, res_dicts_mqt):
+def plot_jku(res_dicts_us_cost, res_dicts_jku_exact, res_dicts_olsq):
     intersection = [key  for key in res_dicts_olsq["tokyo"].keys() & res_dicts_us["tokyo"].keys() & res_dicts_jku_exact["tokyo"].keys()]
     data = pd.DataFrame({"circuit" : intersection+intersection+intersection, "method": [SATMAP for _ in range(len(intersection))] + [OLSQ for _ in range(len(intersection))] + [MQT for _ in range(len(intersection))]  , "time": [res_dicts_us["tokyo"][key] for key in intersection]+[res_dicts_olsq["tokyo"][key] for key in intersection] +[res_dicts_jku_exact["tokyo"][key] for key in intersection] })
     #data = pd.DataFrame(np.array([[res_dicts_us["tokyo"][key], res_dicts_olsq["tokyo"][key]] for key in intersection]), columns = ["SatMap", "OLSQ"], index=intersection)
@@ -146,7 +148,8 @@ def plot_jku(res_dicts_us_cost, res_dicts_tket, res_dicts_sabre, res_dicts_mqt):
     plt.yscale('log')
     barchart.set(ylabel = "time (s)")
 
-    barchart.savefig("../rq1_barchart_jku.pdf")     
+    barchart.savefig("rq1_barchart_jku.pdf")
+    plt.close()     
 
 if __name__ == '__main__':
     arg = sys.argv[1]
@@ -154,8 +157,8 @@ if __name__ == '__main__':
         (res_dicts_us_cost, res_dicts_tket, res_dicts_sabre, res_dicts_mqt) = build_dicts_heuristic()   
         plot_against_heuristic(res_dicts_us_cost, res_dicts_tket, "tket")
         plot_against_heuristic(res_dicts_us_cost, res_dicts_sabre, "sabre")
-        plot_against_heuristic(res_dicts_us_cost, res_dicts_sabre, "mqt")
+        plot_against_heuristic(res_dicts_us_cost, res_dicts_mqt, "mqt")
     elif arg == "-c":
         (res_dicts_us, res_dicts_mqt_ex, res_dicts_olsq) = build_dicts_constraint_based()   
-        plot_olsq(res_dicts_us_cost, res_dicts_olsq)
-        plot_jku(res_dicts_us_cost, res_dicts_tket, res_dicts_sabre, res_dicts_mqt)
+        plot_olsq(res_dicts_us, res_dicts_olsq)
+        plot_jku(res_dicts_us, res_dicts_mqt_ex, res_dicts_olsq)
