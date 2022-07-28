@@ -1,3 +1,3 @@
-./run_from_arg_file.sh arg_files/samll_constraint_based.txt
-./run_from_arg_file.sh arg_files/small_satmap.txt
+mkdir -p aux_files plots
+./run_from_arg_file.sh arg_files/fig_10_11_limited.txt -c
 python3 src/plotter.py -c

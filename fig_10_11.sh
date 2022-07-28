@@ -1,3 +1,2 @@
-./run_from_arg_file.sh arg_files/all_constraint_based.txt
-./run_from_arg_file.sh arg_files/satmap_rq2_configs.txt
-python3 src/plotter.py -c
+mkdir -p aux_files plots
+./run_from_arg_file.sh arg_files/fig_10_11.txt -c
