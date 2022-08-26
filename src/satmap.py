@@ -14,6 +14,9 @@ import qiskit.circuit
 import qiskit.dagcircuit
 import scipy.sparse.csgraph
 import architectures
+from pysat.solvers import Solver
+
+
 
 # Controls whether debug is output (overwritten by Local if True)
 DEBUG_GLOBAL = True
@@ -92,25 +95,27 @@ def generateAndWriteClauses(logNum, liveCnots, cnots, cm, swapNum, ffClauses, pa
     numR = numP
     numS = numCnots * physNum * physNum * swapNum
     top = numS + numR + 1
+    s = Solver(name='cd')
+    assumptions = []
     with open(path, "w") as f:
         f.write("p wcnf " + str(42) + " " + str(42) + " " + str(top) + "\n")
-        writeFunConConstraint(numCnots, liveLog, physNum, logNum, swapNum, top, f)
-        writeInjectivityConstraint(numCnots, liveLog, physNum, logNum, swapNum, top, f)
-        writeCnotConstraint(cnots, cm, physNum, logNum, swapNum, top, f)
+        writeFunConConstraint(numCnots, liveLog, physNum, logNum, swapNum, top, f, satSolver=s)
+        writeInjectivityConstraint(numCnots, liveLog, physNum, logNum, swapNum, top, f, satSolver=s)
+        writeCnotConstraint(cnots, cm, physNum, logNum, swapNum, top, f, satSolver=s)
         if routing:
-            writeSwapChoiceConstraint(swapNum, layers, cm, physNum, logNum, numCnots, top, f)
-            writeSwapEffectConstraint(swapNum, layers, liveLog, physNum, cm, logNum, numCnots, top, f)
+            writeSwapChoiceConstraint(swapNum, layers, cm, physNum, logNum, numCnots, top, f, satSolver=s)
+            writeSwapEffectConstraint(swapNum, layers, liveLog, physNum, cm, logNum, numCnots, top, f, satSolver=s)
         elif weighted: 
-            writeDistanceConstraint(swapNum, physNum, logNum, numCnots, top, f)
+            writeDistanceConstraint(swapNum, physNum, logNum, numCnots, top, f, satSolver=s)
         for clause in ffClauses:
             writeHardClause(f, top, clause, physNum, logNum, numCnots, swapNum)
         writeOptimizationConstraints(swapNum, physNum, numCnots, cm, logNum, routing, weighted, calibrationData, f)
-
+    return s
 # Mapping Constraints #
 
 
 # Every logical qubit is mapped to exactly one physical qubit
-def writeFunConConstraint(numCnots, liveLog, physNum, logNum, swapNum, top, path):
+def writeFunConConstraint(numCnots, liveLog, physNum, logNum, swapNum, top, path, satSolver=None):
     for k in range(numCnots):
         for j in liveLog:
             atLeastOneJ = []
@@ -118,20 +123,20 @@ def writeFunConConstraint(numCnots, liveLog, physNum, logNum, swapNum, top, path
                 atLeastOneJ.append((False,"x", i,j,k))
                 for i2 in range(i):
                     clause=[(True, "x", i2, j, k), (True,"x", i,j,k)]
-                    writeHardClause(path, top, clause, physNum, logNum, numCnots, swapNum)
-            writeHardClause(path, top, atLeastOneJ, physNum, logNum, numCnots, swapNum)
+                    writeHardClause(path, top, clause, physNum, logNum, numCnots, swapNum, satSolver=satSolver)
+            writeHardClause(path, top, atLeastOneJ, physNum, logNum, numCnots, swapNum, satSolver=satSolver)
 
 # No two logical qubits are mapped to the same physical qubit
-def writeInjectivityConstraint(numCnots, liveLog, physNum, logNum,  swapNum, top, path):
+def writeInjectivityConstraint(numCnots, liveLog, physNum, logNum,  swapNum, top, path,  satSolver=None):
     for i in range(physNum):
         for j in liveLog:
             for k in range(numCnots):
                 for j2 in range(j):
-                   writeHardClause(path, top, [(True, "x", i, j2, k), (True,"x",i,j,k)], physNum, logNum, numCnots, swapNum)
+                   writeHardClause(path, top, [(True, "x", i, j2, k), (True,"x",i,j,k)], physNum, logNum, numCnots, swapNum, satSolver=satSolver)
 
 
 # Control and target are mapped to adjacent physical qubits
-def writeCnotConstraint(cnots, cm, physNum, logNum, swapNum, top, path):
+def writeCnotConstraint(cnots, cm, physNum, logNum, swapNum, top, path, satSolver=None):
     numCnots = len(cnots)
     for k in range(len(cnots)):
         (c,t) = cnots[k]
@@ -146,23 +151,23 @@ def writeCnotConstraint(cnots, cm, physNum, logNum, swapNum, top, path):
                         [(False, "x", u, t, k), (True, "r", u, v, k)],
                         [(False, "x", v, c, k), (True, "r", u, v, k)]]
             for clause in clauses:
-                writeHardClause(path, top, clause, physNum, logNum, numCnots, swapNum)
-        writeHardClause(path, top, edgeUsed, physNum, logNum, numCnots, swapNum)
+                writeHardClause(path, top, clause, physNum, logNum, numCnots, swapNum, satSolver=satSolver)
+        writeHardClause(path, top, edgeUsed, physNum, logNum, numCnots, swapNum, satSolver=satSolver)
 
 
 # Routing Constraints #
 
 
-def writeDistanceConstraint(swapNum, physNum, logNum, numCnots, top, path):
+def writeDistanceConstraint(swapNum, physNum, logNum, numCnots, top, path, satSolver=None):
     for k in range(1, numCnots):
         for i in range(physNum):
             for i2 in range(physNum):
                 if i2 != i:
                     for j in range(logNum):
-                        writeHardClause(path, top, [(True, "x", i, j, k-1),(True, "x", i2, j, k), (False, "w", i, i2, k)], physNum, logNum, numCnots, swapNum)
+                        writeHardClause(path, top, [(True, "x", i, j, k-1),(True, "x", i2, j, k), (False, "w", i, i2, k)], physNum, logNum, numCnots, swapNum, satSolver=satSolver)
 
 # Exactly one swap sequence is chosen
-def writeSwapChoiceConstraint(swapNum, layers, cm, physNum, logNum, numCnots,top, path):
+def writeSwapChoiceConstraint(swapNum, layers, cm, physNum, logNum, numCnots,top, path, satSolver=None):
     allowedSwaps = np.append(np.argwhere(cm>0), [[0,0]], axis=0)
     for k in layers:
         for t in range(swapNum):
@@ -171,16 +176,16 @@ def writeSwapChoiceConstraint(swapNum, layers, cm, physNum, logNum, numCnots,top
                 i = 0
                 atLeastOne.append((False, "s", u, v, t, k))
                 if i != 0:
-                    writeHardClause(path, top, [(True, "s", u, v, t, k), (False,"b", i-1, t, k)], physNum, logNum, numCnots, swapNum)
-                    writeHardClause(path, top, [(True, "s", u, v, t, k), (True, "b", i, t, k)], physNum, logNum, numCnots, swapNum)
-                    writeHardClause(path, top, [(True,"b", i-1, t, k), (False, "b", i, t, k), (False, "s", u, v, t, k)], physNum, logNum, numCnots, swapNum)
-                writeHardClause(path, top, [(False, "b", i, t, k), (True,"b", i+1, t, k)], physNum, logNum, numCnots, swapNum)
+                    writeHardClause(path, top, [(True, "s", u, v, t, k), (False,"b", i-1, t, k)], physNum, logNum, numCnots, swapNum, satSolver=satSolver)
+                    writeHardClause(path, top, [(True, "s", u, v, t, k), (True, "b", i, t, k)], physNum, logNum, numCnots, swapNum, satSolver=satSolver)
+                    writeHardClause(path, top, [(True,"b", i-1, t, k), (False, "b", i, t, k), (False, "s", u, v, t, k)], physNum, logNum, numCnots, swapNum, satSolver=satSolver)
+                writeHardClause(path, top, [(False, "b", i, t, k), (True,"b", i+1, t, k)], physNum, logNum, numCnots, swapNum, satSolver=satSolver)
                 i += 1
-            writeHardClause(path, top, atLeastOne, physNum, logNum, numCnots, swapNum)   
+            writeHardClause(path, top, atLeastOne, physNum, logNum, numCnots, swapNum, satSolver=satSolver)   
 
 
 # The chosen swap sequence determines the next mapping
-def writeSwapEffectConstraint(swapNum, layers, liveLog, physNum, cm, logNum, numCnots, top, path):
+def writeSwapEffectConstraint(swapNum, layers, liveLog, physNum, cm, logNum, numCnots, top, path, satSolver=None):
     allowedSwaps = np.append(np.argwhere(cm>0), [[0,0]], axis=0) 
     swapSeqs = itertools.product(allowedSwaps, repeat=swapNum)
     for swapSeq in swapSeqs:
@@ -193,8 +198,8 @@ def writeSwapEffectConstraint(swapNum, layers, liveLog, physNum, cm, logNum, num
                         if k == len(layers)-1: currentRange = [layers[k]]
                         else: currentRange = range(layers[k], layers[ k+1])
                         for current in currentRange:
-                            writeHardClause(path, top, swapLits + [(False, "x", i, j, prev), (True, "x", composeSwaps(swapSeq, physNum)[i], j, current)], physNum, logNum, numCnots, swapNum)
-                            writeHardClause(path, top, swapLits + [(True, "x", i, j, prev), (False, "x", composeSwaps(swapSeq, physNum)[i], j, current)], physNum, logNum, numCnots, swapNum)
+                            writeHardClause(path, top, swapLits + [(False, "x", i, j, prev), (True, "x", composeSwaps(swapSeq, physNum)[i], j, current)], physNum, logNum, numCnots, swapNum, satSolver=satSolver)
+                            writeHardClause(path, top, swapLits + [(True, "x", i, j, prev), (False, "x", composeSwaps(swapSeq, physNum)[i], j, current)], physNum, logNum, numCnots, swapNum, satSolver=satSolver)
 
 
 
@@ -232,6 +237,7 @@ def writeOptimizationConstraints(swapNum, physNum, numCnots, cm, logNum, routing
                     for j in range(logNum):
                         writeSoftClause(path, (1, [(True, "x", i, j, k-1), (False, "x", i, j, k)]), physNum, logNum, numCnots, swapNum)
                         #writeSoftClause(path, (1, [(False, "x", i, j, k-1), (True, "x", i, j, k)]), physNum, logNum, numCnots, swapNum)
+
 
 
 
@@ -287,8 +293,10 @@ def flattenedIndex(lit, physNum, logNum, numCnots, swapNum):
 def flattenedWeightedClause(clause, physNum, logNum, numCnots, swapNum): return (clause[0], [flattenedIndex(lit, physNum, logNum, numCnots, swapNum) for lit in clause[1]])
 def flattenedClause(clause, physNum, logNum, numCnots, swapNum): return [flattenedIndex(lit, physNum, logNum, numCnots, swapNum) for lit in clause]
 
-def writeHardClause(f, top, clause, physNum, logNum, numCnots, swapNum):
+def writeHardClause(f, top, clause, physNum, logNum, numCnots, swapNum, satSolver=None):
         flatClause = flattenedClause(clause, physNum, logNum, numCnots, swapNum)
+        if satSolver:
+            satSolver.add_clause([int(lit) for lit in flatClause])
         f.write(str(top))
         f.write(" ")
         for lit in flatClause:
@@ -377,6 +385,20 @@ def swapsFromMaps(initial, final, mapStr):
 
 ## Solving ##
 
+def extractMappingCore(solver, initialMapping, logNum, physNum, numCnots, swapNum):
+    i = 1
+    for i in range(1,len(initialMapping)):
+        submaps = list(itertools.combinations(initialMapping, i))
+        for submap in submaps:
+            assump = []
+            for clause in submap:
+                flatClause = flattenedClause(clause, physNum, logNum, numCnots, swapNum)
+                assump.append(int(flatClause[0]))
+            if not solver.solve(assumptions = assump): 
+                return submap
+
+
+
 def solve(progName, cm, swapNum, chunks, iterations=100, time_wbo_max = 600, qaoa=False, _routing=True, _weighted=False, _calibrationData=None, pname="test", sname="out"):
     ''' The SAT-solving loop. Parses the program, generates corresponding MaxSat instances, and calls the MaxSat Solver '''
     # Controls whether this function's debug is printed (overwrites DEBUG_GLOBAL)
@@ -421,7 +443,7 @@ def solve(progName, cm, swapNum, chunks, iterations=100, time_wbo_max = 600, qao
             if qaoa and currentChunk == chunks-1:
                 swapBack = [[(False, "x", phys, log, currentSize-1), (True, "x", phys, log, 0) ] for phys in range(physNum) for log in range(logNum)] +  [[(True, "x", phys, log, currentSize-1), (False, "x", phys, log, 0) ] for phys in range(physNum) for log in range(logNum)]
             gen_write_s = time.process_time()
-            generateAndWriteClauses(logNum, cnots[:end], cnots[:end], cm, swapNum+addedSwaps[0], negatedModels[0] + swapBack, pname+"-chnk"+str(currentChunk)+".cnf", routing=_routing, weighted =_weighted, calibrationData=_calibrationData)
+            s= generateAndWriteClauses(logNum, cnots[:end], cnots[:end], cm, swapNum+addedSwaps[0], negatedModels[0] + swapBack, pname+"-chnk"+str(currentChunk)+".cnf", routing=_routing, weighted =_weighted, calibrationData=_calibrationData)
             gen_write_f = time.process_time()
             print("generation and write time:", gen_write_f - gen_write_s)
             t_s = time.process_time()
@@ -448,12 +470,12 @@ def solve(progName, cm, swapNum, chunks, iterations=100, time_wbo_max = 600, qao
             gen_write_s = time.process_time()
             print("start:", layers[chunkSize*(currentChunk)])
             print("end:", end)
-            generateAndWriteClauses(logNum, cnots[:end], cnots[layers[chunkSize*(currentChunk)]:end], cm, swapNum+addedSwaps[currentChunk], consistencyClauses+negatedModels[currentChunk]+swapBack,  pname+"-chnk"+str(currentChunk)+".cnf", routing=_routing, weighted=_weighted, calibrationData=_calibrationData)
+            s = generateAndWriteClauses(logNum, cnots[:end], cnots[layers[chunkSize*(currentChunk)]:end], cm, swapNum+addedSwaps[currentChunk], consistencyClauses+negatedModels[currentChunk]+swapBack,  pname+"-chnk"+str(currentChunk)+".cnf", routing=_routing, weighted=_weighted, calibrationData=_calibrationData)
             gen_write_f = time.process_time()
             print("generation and write time:", gen_write_f - gen_write_s)
             t_s = time.process_time()
             if time_wbo_max:
-                solve_time_rem = time_wbo_max-time_elapsed_wbo 
+                solve_time_rem = time_wbo_max- time_elapsed_wbo 
             try:
                 p = subprocess.Popen(["../lib/Open-WBO-Inc/open-wbo-inc_release", "-iterations="+str(iterations), pname+"-chnk"+str(currentChunk)+".cnf"], stdout=open(sname + "-chnk" + str(currentChunk) + ".txt", "w"))
                 p.wait(timeout=solve_time_rem/(chunks-currentChunk))
@@ -472,8 +494,13 @@ def solve(progName, cm, swapNum, chunks, iterations=100, time_wbo_max = 600, qao
                     print("got stuck on chunk", currentChunk, "backtracking to chunk", currentChunk-1)
                     prevAssignments = filter(lambda x : x[2] == prevSize-1, mappingVars(readMaxSatOutput, physNum, logNum, prevSize, swapNum+addedSwaps[currentChunk-1], sname + "-chnk" + str(currentChunk-1) + ".txt"))
                     negatedModel =  [(True, "x", phys, log, lastGate) for (phys, log, lastGate) in prevAssignments]
-                    negatedModels[currentChunk-1].append(negatedModel)
+                    print(negatedModel)
+                    core = extractMappingCore(s, consistencyClauses,  logNum, len(cm), currentSize, swapNum+addedSwaps[currentChunk])
+                    negatedSubmap = [(True, x, phys, log, prevSize-1) for [(_, x, phys, log, _)] in  core]
+                    print(negatedSubmap)
+                    negatedModels[currentChunk-1].append(negatedSubmap)
                     currentChunk = currentChunk-1
+
                 else:
                     print("got stuck on chunk", currentChunk, "repeatedly, increasing swap count")
                     addedSwaps[currentChunk] += 1 
@@ -510,7 +537,6 @@ def solve(progName, cm, swapNum, chunks, iterations=100, time_wbo_max = 600, qao
         return_results["swaps"] = swaps
         return return_results
     return return_results
-
 
 
 
@@ -615,19 +641,19 @@ def transpile(progname, cm, swapNum, chunks, cnfname, sname, routing=True, weigh
 
         
 
-# if __name__ == "__main__":
-#     root = "../examples/jku_constraint_based/"
-#     for example in  os.listdir(root):
-#             with open("data.txt", "a") as f:
-#                 if "qiskit" in example:
-#                     os.remove(root+example)
-#                 elif os.path.isfile(root+example) and ".qasm" in example and len(extractCNOTs(root+example)) < 50 :
-#                     chunks = -(len(extractCNOTs(root+example)) // -25)
-#                     print(example, file=f)
-#                     (stats_route, qasm) = transpile(root+example, architectures.ibmTokyo, 1, 1, "out", "test", routing=True, calibrationData=architectures.tokyo_error_list())
-#                     fid = computeFidelity(qiskit.QuantumCircuit.from_qasm_str(qasm), architectures.tokyo_error_map())
-#                     print("fidelity:", fid, file=f)
-#                     print("stats:", stats_route, file=f)
+if __name__ == "__main__":
+    root = "../examples/"
+    for example in  os.listdir(root):
+            with open("data.txt", "a") as f:
+                if "qiskit" in example:
+                    os.remove(root+example)
+                elif os.path.isfile(root+example) and ".qasm" in example:
+                    chunks = -(len(extractCNOTs(root+example)) // -25)
+                    print(example, file=f)
+                    (stats_route, qasm) = transpile(root+example, architectures.ibmTokyo, 1, chunks, "out", "test", routing=True)
+                    fid = computeFidelity(qiskit.QuantumCircuit.from_qasm_str(qasm), architectures.tokyo_error_map())
+                    print("fidelity:", fid, file=f)
+                    print("stats:", stats_route, file=f)
 
     # print(transpile("../examples/queko/queko_tokyo_11.qasm", architectures.ibmTokyo, 1, 1, "quekout", "quektest"))
  
