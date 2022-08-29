@@ -11,7 +11,7 @@ There is also a Docker image available [here](https://hub.docker.com/repository/
 # Installation
 1. Clone this repo *including the MaxSAT solver* 
 
-   ```$ git clone https://github.com/qqq-wisc/mapper.git  --recurse-submodules```
+   ```$ git clone https://github.com/qqq-wisc/satmap.git  --recurse-submodules```
  
     If you forget the ```--recurse-submodules``` option the first time around, you can fetch the submodule later with 
 
@@ -19,7 +19,7 @@ There is also a Docker image available [here](https://hub.docker.com/repository/
 
 2. Build the MaxSAT solver. Make sure you have [GMP](https://gmplib.org/) installed. Then build with:
     ```
-    $ cd mapper/lib/Open-WBO-Inc/
+    $ cd satmap/lib/Open-WBO-Inc/
     $ make r
     ```
     
@@ -35,7 +35,7 @@ The choices for options include:
 + ``--output_path <file_path>``: Sets a path for saving the output circuit. By default, SATMap writes the result of mapping and routing "fname.qasm" to a file in the home directory called "mapped_fname.qasm."
 
 # Custom Architectures
-SATMap includes the "brick-like" 20-qubit IBM Tokyo and heavy-hexagonal 27-qubit IBM Toronto connectivity graphs. It also includes functions for generating linear and nearest-neighbor connectivity graphs with arbitrary dimensions. 
+SATMap includes the "brick-like" 20-qubit IBM Tokyo and heavy-hexagonal 27-qubit IBM Toronto connectivity graphs. It also provides functions for generating linear and nearest-neighbor connectivity graphs with arbitrary dimensions. 
 
 To use a different connectivity graph, generate a text file consisting of an adjacency matrix for the desired graph and pass it as the ``--arch`` argument.
 For example, to use a triangle connectivity graph:
