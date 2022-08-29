@@ -654,15 +654,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("prog", help="path to input program file")
     parser.add_argument("-o_p", "--output_path", help="where to write the resulting qasm")
-    parser.add_argument("-a", "--arch", choices=["tokyo", "toronto", "4x4_mesh", "16_linear", 'small_linear', "tokyo_full_diags", "tokyo_no_diags", 'tokyo_drop_2', 'tokyo_drop_6', 'tokyo_drop_10', 'tokyo_drop_14'], help="name of qc architecture")
-    parser.add_argument("-to", "--timeout", type=int, help="maximum run time for a mapper in seconds")
+    parser.add_argument("-a", "--arch", help="name of qc architecture")
+    parser.add_argument("-to", "--timeout", type=int, default=1800,help="maximum run time for a mapper in seconds")
     parser.add_argument("--k", type=int, default=25, help="SolveSwapsFF: k-value")
-    parser.add_argument("--towbo", type=int, default=1800, help="maximum run time for maxsat solver in seconds")
     parser.add_argument("--cyclic", choices=["on", "off"], default="off", help="cyclic mapping")
     parser.add_argument("--no_route",  action="store_true", help="SolveSwapsFF routing")
     parser.add_argument("--weighted",  action="store_true", help="SolveSwapsFF weighting on dist")
     parser.add_argument("--err", choices=['fake_tokyo', 'fake_linear'], help="olsq: 2 qubit gate error rates")
-
+    
     archs =  {
         "tokyo" : architectures.ibmTokyo,
         "toronto" : architectures.ibmToronto,
@@ -681,8 +680,13 @@ if __name__ == "__main__":
         'fake_linear' : architectures.fake_linear_error_list()
     }
     args = parser.parse_args()
+    if args.arch in archs:
+        arch = archs[args.arch]
+    else:
+        with open(args.arch) as f:
+            arch = np.array(ast.literal_eval(f.read()))
     base, _ = os.path.splitext(os.path.basename(args.prog))
-    (stats, qasm) = transpile(args.prog, archs[args.arch], 1, "prob_"+base, "sol_"+base, slice_size=args.k, max_sat_time=args.towbo, routing= not args.no_route, weighted= args.weighted, calibrationData=error_rates[args.err] if args.err else None )
+    (stats, qasm) = transpile(args.prog, arch, 1, "prob_"+base, "sol_"+base, slice_size=args.k, max_sat_time=args.timeout, routing= not args.no_route, weighted= args.weighted, calibrationData=error_rates[args.err] if args.err else None )
     print(stats)
     out_file = args.output_path if args.output_path else "mapped_"+os.path.basename(args.prog)
     with open(out_file, "w") as f:
