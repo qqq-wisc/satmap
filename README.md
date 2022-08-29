@@ -26,6 +26,6 @@ There is also a Docker image avaliable [here](https://hub.docker.com/repository/
 # Usage
 To run SATMap on the file "circ.qasm" on the IBM Tokyo architecture
 ```
-$ python3 circ.qasm --arch tokyo [options]
+$ python3 src/satmap.py circ.qasm --arch tokyo [options]
 ```
     
