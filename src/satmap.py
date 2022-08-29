@@ -1,22 +1,21 @@
+import argparse
 import ast
-from asyncio.subprocess import PIPE
 import itertools
 import math
 import os
 import re
 import subprocess
-import sys
 import time
+from asyncio.subprocess import PIPE
+
 import numpy as np
-import networkx as nx
 import qiskit
 import qiskit.circuit
 import qiskit.dagcircuit
 import scipy.sparse.csgraph
-import architectures
 from pysat.solvers import Solver
 
-
+import architectures
 
 # Controls whether debug is output (overwritten by Local if True)
 DEBUG_GLOBAL = True
@@ -542,16 +541,21 @@ def solve(progName, cm, swapNum, chunks, iterations=100, time_wbo_max = 600, qao
 
 ## Converting solutions to circuits, verifying correctness ##
 
-def toQasm(physNum, logNum, numCnots, swapNum, fname, progPath, cm, prevMap, start=0, swapList=None):
+def toQasm(physNum, logNum, numCnots, swapNum, fname, progPath, cm, prevMap, start=0, append_rest=False, swapList=None):
     circ = qiskit.QuantumCircuit(physNum, physNum)
     prog = qiskit.QuantumCircuit.from_qasm_file(progPath)
     temp =  qiskit.QuantumCircuit(physNum, physNum)
     temp.compose(prog, inplace=True)
     edges = np.argwhere(cm > 0)
     i = start
-    while circ.num_nonlocal_gates() < numCnots:
+    if append_rest:
+     while len(circ) < len(temp):
         circ.append(*temp[i])
         i += 1
+    else:
+        while circ.num_nonlocal_gates() < numCnots:
+            circ.append(*temp[i])
+            i += 1
     lits = readMaxSatOutput(physNum, logNum, numCnots, swapNum, fname)
     if swapList:
         swaps = swapList
@@ -609,10 +613,14 @@ def toQasmFF(progName, cm, swapNum, chunks, fname, swaps=None):
     prevMap = None
     circ = qiskit.QuantumCircuit(len(cm), len(cm))
     for i in range(chunks):
-        if i == chunks - 1: end = numCnots
-        else: end = layers[chunkSize*(i+1)]
+        is_last = False
+        if i == chunks - 1: 
+            end = numCnots
+            is_last = True
+        else: 
+            end = layers[chunkSize*(i+1)]
         currentSize = end - layers[chunkSize*(i)]
-        (mapped_circ, gates, finalMap) = toQasm(physNum, logNum, currentSize, swapNum, fname + "-chnk" + str(i) + ".txt", progName, cm, prevMap, start=pointer, swapList= swaps[i] if swaps else None)
+        (mapped_circ, gates, finalMap) = toQasm(physNum, logNum, currentSize, swapNum, fname + "-chnk" + str(i) + ".txt", progName, cm, prevMap, append_rest=is_last, start=pointer, swapList= swaps[i] if swaps else None)
         pointer = gates
         prevMap = finalMap
         circ.compose(mapped_circ, inplace=True)
@@ -630,9 +638,10 @@ def computeFidelity(circ, calibrationData):
     return fid
 
 
-def transpile(progname, cm, swapNum, chunks, cnfname, sname, routing=True, weighted=False, calibrationData = None):
+def transpile(progname, cm, swapNum, cnfname, sname, slice_size=25, max_sat_time=600, routing=True, weighted=False, calibrationData = None):
+    chunks = -(len(extractCNOTs(progname)) // -slice_size)
     if routing:
-        stats = solve(progname, cm, swapNum, chunks, pname=cnfname, sname=sname, _calibrationData=calibrationData)
+        stats = solve(progname, cm, swapNum, chunks, pname=cnfname, sname=sname, time_wbo_max=max_sat_time, _calibrationData=calibrationData)
         return (stats, toQasmFF(os.path.join(os.path.split(progname)[0], "qiskit-"+os.path.split(progname)[1]),  cm, swapNum, chunks, sname))
     else: 
       (cost, towbo, tastar, _swaps) = solve(progname, cm, swapNum, chunks, pname=cnfname, sname=sname, _routing=False, _weighted=weighted)
@@ -642,19 +651,40 @@ def transpile(progname, cm, swapNum, chunks, cnfname, sname, routing=True, weigh
         
 
 if __name__ == "__main__":
-    root = "../examples/"
-    for example in  os.listdir(root):
-            with open("data.txt", "a") as f:
-                if "qiskit" in example:
-                    os.remove(root+example)
-                elif os.path.isfile(root+example) and ".qasm" in example:
-                    chunks = -(len(extractCNOTs(root+example)) // -25)
-                    print(example, file=f)
-                    (stats_route, qasm) = transpile(root+example, architectures.ibmTokyo, 1, chunks, "out", "test", routing=True)
-                    fid = computeFidelity(qiskit.QuantumCircuit.from_qasm_str(qasm), architectures.tokyo_error_map())
-                    print("fidelity:", fid, file=f)
-                    print("stats:", stats_route, file=f)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("prog", help="path to input program file")
+    parser.add_argument("-o_p", "--output_path", help="where to write the resulting qasm")
+    parser.add_argument("-a", "--arch", choices=["tokyo", "toronto", "4x4_mesh", "16_linear", 'small_linear', "tokyo_full_diags", "tokyo_no_diags", 'tokyo_drop_2', 'tokyo_drop_6', 'tokyo_drop_10', 'tokyo_drop_14'], help="name of qc architecture")
+    parser.add_argument("-to", "--timeout", type=int, help="maximum run time for a mapper in seconds")
+    parser.add_argument("--k", type=int, default=25, help="SolveSwapsFF: k-value")
+    parser.add_argument("--towbo", type=int, default=1800, help="maximum run time for maxsat solver in seconds")
+    parser.add_argument("--cyclic", choices=["on", "off"], default="off", help="cyclic mapping")
+    parser.add_argument("--no_route",  action="store_true", help="SolveSwapsFF routing")
+    parser.add_argument("--weighted",  action="store_true", help="SolveSwapsFF weighting on dist")
+    parser.add_argument("--err", choices=['fake_tokyo', 'fake_linear'], help="olsq: 2 qubit gate error rates")
 
-    # print(transpile("../examples/queko/queko_tokyo_11.qasm", architectures.ibmTokyo, 1, 1, "quekout", "quektest"))
- 
+    archs =  {
+        "tokyo" : architectures.ibmTokyo,
+        "toronto" : architectures.ibmToronto,
+        "4x4_mesh" : architectures.meshArch(4,4),
+        'small_linear' : architectures.linearArch(6),
+        "16_linear" : architectures.linearArch(16),
+        "tokyo_full_diags" : architectures.tokyo_all_diags(),
+        "tokyo_no_diags" : architectures.tokyo_no_diags(),
+        'tokyo_drop_2' : architectures.tokyo_drop_worst_n(2, architectures.tokyo_error_map()),
+        'tokyo_drop_6' : architectures.tokyo_drop_worst_n(6, architectures.tokyo_error_map()),
+        'tokyo_drop_10' : architectures.tokyo_drop_worst_n(10, architectures.tokyo_error_map()),
+        'tokyo_drop_14' : architectures.tokyo_drop_worst_n(14, architectures.tokyo_error_map()),
+    }
+    error_rates = {
+        'fake_tokyo' : architectures.tokyo_error_list(),
+        'fake_linear' : architectures.fake_linear_error_list()
+    }
+    args = parser.parse_args()
+    base, _ = os.path.splitext(os.path.basename(args.prog))
+    (stats, qasm) = transpile(args.prog, archs[args.arch], 1, "prob_"+base, "sol_"+base, slice_size=args.k, max_sat_time=args.towbo, routing= not args.no_route, weighted= args.weighted, calibrationData=error_rates[args.err] if args.err else None )
+    print(stats)
+    out_file = args.output_path if args.output_path else "mapped_"+os.path.basename(args.prog)
+    with open(out_file, "w") as f:
+        f.write(qasm) 
  

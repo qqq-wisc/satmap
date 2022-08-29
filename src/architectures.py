@@ -1,4 +1,3 @@
-from platform import architecture
 import numpy as np
 import json
 import random
