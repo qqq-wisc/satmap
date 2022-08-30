@@ -1,5 +1,5 @@
 # SATMap
-   This is a MaxSAT-based tool for the Qubit Mapping and Routing Problem, implementing the algorithm described in [1]. This branch represents the latest version of SATMap and should be used for best results. To reproduce the experimental conditions of the paper, see the [micro22-artifact branch](https://github.com/qqq-wisc/satmap/tree/micro22-artifact).
+   This is a MaxSAT-based tool for the Qubit Mapping and Routing Problem, implementing the algorithm described in [[1]](https://pages.cs.wisc.edu/~aws/papers/micro22.pdf). This branch represents the latest version of SATMap and should be used for best results. To reproduce the experimental conditions of the paper, see the [micro22-artifact branch](https://github.com/qqq-wisc/satmap/tree/micro22-artifact).
 
 # Dependencies
 
@@ -45,3 +45,7 @@ For example, to use a triangle connectivity graph:
     $ python3 src/satmap.py circ.qasm --arch triangle.txt
  ```
 
+# References
+[1] Abtin Molavi, Amanda Xu, Martin Diges, Lauren Pick, Swamit Tannu, Aws Albarghouthi. “Qubit
+mapping and routing via MaxSAT.” *Proceedings of the 55th IEEE/ACM International Symposium
+on Microarchitecture* (MICRO 22).
