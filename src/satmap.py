@@ -4,9 +4,11 @@ import itertools
 import math
 import os
 import re
+import string
 import subprocess
 import time
 from asyncio.subprocess import PIPE
+from unittest import result
 
 import numpy as np
 import qiskit
@@ -78,7 +80,7 @@ def sortCnots(logNum, cnots):
 ## Constraint Generation ##
 
 
-def generateAndWriteClauses(logNum, liveCnots, cnots, cm, swapNum, ffClauses, path, routing=True, weighted=False, layering=False, calibrationData=None):
+def generateAndWriteClauses(logNum, liveCnots, cnots, cm, swapNum, ffClauses, path, routing=True, weighted=False, boundedAbove=False, layering=False, calibrationData=None):
     ''' 
         Writes the constraints corresponding to a particular MaxSat Instance to the given path as a wcnf file
     '''
@@ -95,7 +97,6 @@ def generateAndWriteClauses(logNum, liveCnots, cnots, cm, swapNum, ffClauses, pa
     numS = numCnots * physNum * physNum * swapNum
     top = numS + numR + 1
     s = Solver(name='cd')
-    assumptions = []
     with open(path, "w") as f:
         f.write("p wcnf " + str(42) + " " + str(42) + " " + str(top) + "\n")
         writeFunConConstraint(numCnots, liveLog, physNum, logNum, swapNum, top, f, satSolver=s)
@@ -106,6 +107,8 @@ def generateAndWriteClauses(logNum, liveCnots, cnots, cm, swapNum, ffClauses, pa
             writeSwapEffectConstraint(swapNum, layers, liveLog, physNum, cm, logNum, numCnots, top, f, satSolver=s)
         elif weighted: 
             writeDistanceConstraint(swapNum, physNum, logNum, numCnots, top, f, satSolver=s)
+        elif boundedAbove:
+            writeMaxDisplacedConstraint(5, physNum, logNum, swapNum, numCnots, top, f, satSolver=s)
         for clause in ffClauses:
             writeHardClause(f, top, clause, physNum, logNum, numCnots, swapNum)
         writeOptimizationConstraints(swapNum, physNum, numCnots, cm, logNum, routing, weighted, calibrationData, f)
@@ -200,7 +203,14 @@ def writeSwapEffectConstraint(swapNum, layers, liveLog, physNum, cm, logNum, num
                             writeHardClause(path, top, swapLits + [(False, "x", i, j, prev), (True, "x", composeSwaps(swapSeq, physNum)[i], j, current)], physNum, logNum, numCnots, swapNum, satSolver=satSolver)
                             writeHardClause(path, top, swapLits + [(True, "x", i, j, prev), (False, "x", composeSwaps(swapSeq, physNum)[i], j, current)], physNum, logNum, numCnots, swapNum, satSolver=satSolver)
 
-
+def writeMaxDisplacedConstraint(maxDisplaced, physNum, logNum, swapNum, numCnots, top, path, satSolver=None):
+    for k in range(1,numCnots):
+        for i in range(physNum):
+            for j in range(logNum):
+             writeHardClause(path, top, [(True, "x", i, j, k-1), (False, "x", i, j, k), (False, "d", j, k)],  physNum, logNum, numCnots, swapNum, satSolver=satSolver)
+    displacementSets = itertools.combinations([(True, "d", j, k) for j in range(logNum) for k in range(numCnots)], maxDisplaced)
+    for displacementSet in displacementSets:
+            writeHardClause(path, top, displacementSet, physNum, logNum, numCnots, swapNum, satSolver=satSolver)
 
 # Soft Constraints #
 
@@ -268,6 +278,7 @@ def flattenedIndex(lit, physNum, logNum, numCnots, swapNum):
     numR = numP
     numS = numCnots * physNum * physNum * swapNum
     numB = numS
+    numW = physNum * physNum * numCnots
     indices = lit[2:]
     if lit[1] == "p":
         pos = np.ravel_multi_index(indices, (physNum, physNum, numCnots))
@@ -284,6 +295,8 @@ def flattenedIndex(lit, physNum, logNum, numCnots, swapNum):
                swapNum, numCnots)) + numP + numR + numX+numS)
     elif lit[1] == "w":
         pos = (np.ravel_multi_index(indices, (physNum, physNum, numCnots)) + numP + numR + numX+numS + numB)
+    elif lit[1] == "d":
+        pos = (np.ravel_multi_index(indices, (logNum, numCnots)) + numP + numR + numX+numS + numB + numW)
     pos = pos + 1
     if lit[0]:
         pos = -pos
@@ -320,6 +333,7 @@ def unravel(flatLit, physNum, logNum, numCnots, swapNum):
     numR = numP
     numS = numCnots * swapNum * physNum * physNum
     numB = numS
+    numW = physNum * physNum * numCnots
     flipped = flatLit < 0
     shifted = abs(flatLit) - 1
     if shifted < numP:
@@ -332,8 +346,11 @@ def unravel(flatLit, physNum, logNum, numCnots, swapNum):
         return (flipped, "s", np.unravel_index(shifted-(numP+numR+numX), (physNum, physNum, swapNum, numCnots)))
     elif shifted < (numP+numR+numX+numS+numB):
         return (flipped, "b", np.unravel_index(shifted-(numP+numR+numX+numS), (physNum*physNum, swapNum, numCnots)))
-    else:
+    elif shifted < (numP+numR+numX+numS+numB+numW):
         return (flipped, "w", np.unravel_index(shifted-(numP+numR+numX+numS+numB), (physNum, physNum,numCnots)))
+    else:
+        return (flipped, "d", np.unravel_index(shifted-(numP+numR+numX+numS+numB+numW), (logNum, numCnots)))
+
 
 def readMaxSatOutput(physNum, logNum, numCnots, swapNum, fname):
     with open(fname) as f:
@@ -342,6 +359,13 @@ def readMaxSatOutput(physNum, logNum, numCnots, swapNum, fname):
                 lits = line.split()[1:]      
                 return [unravel(int(lit), physNum, logNum, numCnots, swapNum) for lit in lits]
     return []
+
+def readPySatOutput(physNum, logNum, numCnots, swapNum, solver):
+    lits = solver.get_model()
+    return [unravel(int(lit), physNum, logNum, numCnots, swapNum) for lit in lits] 
+    
+
+
 
 def readCost(fname):
     best = math.inf
@@ -352,8 +376,8 @@ def readCost(fname):
     return best
 
 
-def mappingVars(parseFun, physNum, logNum, numCnots, permNum, fname):
-    return map(lambda x: x[2], filter(lambda x: not x[0] and x[1] == "x", parseFun(physNum, logNum, numCnots, permNum, fname)))
+def mappingVars(parseFun, physNum, logNum, numCnots, permNum, source):
+    return map(lambda x: x[2], filter(lambda x: not x[0] and x[1] == "x", parseFun(physNum, logNum, numCnots, permNum, source)))
 
 
 ## Interface with Haskell for no route version
@@ -398,7 +422,99 @@ def extractMappingCore(solver, initialMapping, logNum, physNum, numCnots, swapNu
 
 
 
-def solve(progName, cm, swapNum, chunks, iterations=100, time_wbo_max = 600, qaoa=False, _routing=True, _weighted=False, _calibrationData=None, pname="test", sname="out"):
+def solve_bounded_above(progName, cm, swapNum, chunks, pname="test", sname="out"):
+    return_results = {}
+    cost = 0  # <-- number of SWAPs added
+    time_elapsed_wbo = 0
+    physNum = len(cm)
+    logNum = extractQbits(progName)
+    return_results = {}
+    hack = qiskit.QuantumCircuit.from_qasm_file(progName)
+    (head, tail) = os.path.split(progName)
+    with open(os.path.join(head, "qiskit-" + tail), "w") as f:
+        f.write(hack.qasm())
+    cnots = extractCNOTs(os.path.join(head, "qiskit-" + tail))
+    numCnots = len(cnots)
+
+    layers= range(len(cnots))
+    chunkSize = len(layers)//chunks
+    currentChunk = 0
+    addedSwaps = [0 for _ in range(chunks)]
+    negatedModels = [[] for i in range(chunks)]
+    solvers = [None for i in range(chunks)] 
+    while currentChunk < chunks:
+        print("current chunk is", currentChunk)
+        print("negated", len(negatedModels[currentChunk]), "models")
+        if currentChunk == chunks - 1: end = numCnots
+        else: end = layers[chunkSize*(currentChunk+1)]
+        currentSize = end - layers[chunkSize*(currentChunk)]
+        print("current size:", currentSize)
+        if currentChunk == 0:
+            swapBack = []
+            gen_write_s = time.process_time()
+            solvers[currentChunk] = generateAndWriteClauses(logNum, cnots[:end], cnots[:end], cm, swapNum+addedSwaps[0], negatedModels[0] + swapBack, pname+"-chnk"+str(currentChunk)+".cnf", boundedAbove=True, routing=False)
+            gen_write_f = time.process_time()
+            print("generation and write time:", gen_write_f - gen_write_s)
+            t_s = time.process_time()
+            solvers[currentChunk].solve()
+            t_f = time.process_time()
+        else:
+            prevSize = layers[chunkSize*currentChunk] - layers[chunkSize*(currentChunk-1)]
+            prevAssignments = filter(lambda x : x[2] == prevSize-1, mappingVars(readPySatOutput, physNum, logNum, prevSize, swapNum+addedSwaps[currentChunk-1], solvers[currentChunk-1]))
+            consistencyClauses = [[(False, "x", phys, log, 0)] for (phys, log, _) in prevAssignments]
+            swapBack = []
+            gen_write_s = time.process_time()
+            print("start:", layers[chunkSize*(currentChunk)])
+            print("end:", end)
+            solvers[currentChunk] = generateAndWriteClauses(logNum, cnots[:end], cnots[layers[chunkSize*(currentChunk)]:end], cm, swapNum+addedSwaps[currentChunk], consistencyClauses+negatedModels[currentChunk]+swapBack,  pname+"-chnk"+str(currentChunk)+".cnf", boundedAbove=True, routing=False)
+            gen_write_f = time.process_time()
+            print("generation and write time:", gen_write_f - gen_write_s)
+            t_s = time.process_time()
+            solvers[currentChunk].solve()
+            t_f = time.process_time()
+        if solvers[currentChunk].solve(): 
+            print("chunk", currentChunk, "solved")
+            currentChunk = currentChunk+1
+        else:
+                if len(negatedModels[currentChunk-1]) < 50*(addedSwaps[currentChunk]+1): 
+                    print("got stuck on chunk", currentChunk, "backtracking to chunk", currentChunk-1)
+                    prevAssignments = filter(lambda x : x[2] == prevSize-1, mappingVars(readPySatOutput, physNum, logNum, prevSize, swapNum+addedSwaps[currentChunk-1], solvers[currentChunk-1]))
+                    negatedModel =  [(True, "x", phys, log, lastGate) for (phys, log, lastGate) in prevAssignments]
+                    print(negatedModel)
+                    core = extractMappingCore(solvers[currentChunk], consistencyClauses,  logNum, len(cm), currentSize, swapNum+addedSwaps[currentChunk])
+                    negatedSubmap = [(True, x, phys, log, prevSize-1) for [(_, x, phys, log, _)] in  core]
+                    print(negatedSubmap)
+                    negatedModels[currentChunk-1].append(negatedSubmap)
+                    currentChunk = currentChunk-1
+
+                else:
+                    print("got stuck on chunk", currentChunk, "repeatedly, increasing swap count")
+                    addedSwaps[currentChunk] += 1 
+    a_star_time = 0
+    cost = 0
+    swaps = [[] for _ in range(chunks)]
+    for i in range(chunks):
+        if i == chunks - 1: end = numCnots
+        else: end = layers[chunkSize*(i+1)]
+        size = end - layers[chunkSize*(i)]
+        for k in range(1,size):
+            initial = list(filter(lambda x : x[2] == k-1, mappingVars(readPySatOutput, physNum, logNum, size, swapNum+addedSwaps[i], solvers[i])))
+            final = list(filter(lambda x : x[2] == k, mappingVars(readPySatOutput, physNum, logNum, size, swapNum+addedSwaps[i], solvers[i])))
+            writeForRouting(initial, final, cm)
+            a_star_start = time.process_time()
+            p = subprocess.run(["./route","toHaskell.txt"], stdout=PIPE )
+            a_star_end = time.process_time()
+            a_star_time += a_star_end - a_star_start
+            out = p.stdout.decode()
+            swaps[i].extend([(u, v, t, k) for  (u,v,t) in swapsFromMaps(initial, final, out.splitlines()[1].replace("mappings: ", ""))])
+            cost += float(out.splitlines()[0].split()[1])
+    return_results["cost"] = cost
+    return_results['a_star_time'] = a_star_time
+    return_results["swaps"] = swaps
+    return_results['solvers'] = solvers
+    return return_results
+
+def solve(progName, cm, swapNum, chunks, iterations=100, time_wbo_max = 600, qaoa=False, _routing=True, _weighted=False, _calibrationData=None,  pname="test", sname="out"):
     ''' The SAT-solving loop. Parses the program, generates corresponding MaxSat instances, and calls the MaxSat Solver '''
     # Controls whether this function's debug is printed (overwrites DEBUG_GLOBAL)
     DEBUG_LOCAL = False
@@ -534,6 +650,7 @@ def solve(progName, cm, swapNum, chunks, iterations=100, time_wbo_max = 600, qao
         return_results["cost"] = cost
         return_results['a_star_time'] = a_star_time
         return_results["swaps"] = swaps
+        print(return_results)
         return return_results
     return return_results
 
@@ -541,7 +658,7 @@ def solve(progName, cm, swapNum, chunks, iterations=100, time_wbo_max = 600, qao
 
 ## Converting solutions to circuits, verifying correctness ##
 
-def toQasm(physNum, logNum, numCnots, swapNum, fname, progPath, cm, prevMap, start=0, append_rest=False, swapList=None):
+def toQasm(physNum, logNum, numCnots, swapNum, solSource, progPath, cm, prevMap, start=0, append_rest=False, swapList=None):
     circ = qiskit.QuantumCircuit(physNum, physNum)
     prog = qiskit.QuantumCircuit.from_qasm_file(progPath)
     temp =  qiskit.QuantumCircuit(physNum, physNum)
@@ -549,22 +666,24 @@ def toQasm(physNum, logNum, numCnots, swapNum, fname, progPath, cm, prevMap, sta
     edges = np.argwhere(cm > 0)
     i = start
     if append_rest:
-     while len(circ) < len(temp):
+     while len(circ)+start < len(temp):
         circ.append(*temp[i])
         i += 1
     else:
         while circ.num_nonlocal_gates() < numCnots:
             circ.append(*temp[i])
             i += 1
-    lits = readMaxSatOutput(physNum, logNum, numCnots, swapNum, fname)
-    if swapList:
+    if type(solSource) is str:
+        lits = readMaxSatOutput(physNum, logNum, numCnots, swapNum, solSource)
+    else:
+        lits = readPySatOutput(physNum, logNum, numCnots, swapNum, solSource)
+    if swapList is not None:
         swaps = swapList
     else:
         swaps = [s[2] for s in filter(lambda x : not x[0] and x[1] == "s" and x[2][0] != x[2][1], lits)]
     mappingVars =  [x[2] for x in filter(lambda x : not x[0] and x[1] == "x", lits)]
     logToPhys = { (j,k) : i for (i,j,k) in mappingVars}
     physToLog = { (i,k) : j for (i,j,k) in mappingVars}
-
     swapIndices = [s[3] for s in swaps]
     for k in range(numCnots):
         mapKLog = list(filter(lambda x: x[0][1] == k, logToPhys.items()))
@@ -573,6 +692,7 @@ def toQasm(physNum, logNum, numCnots, swapNum, fname, progPath, cm, prevMap, sta
         mapKPhys = list(filter(lambda x: x[0][1] == k, physToLog.items()))
         assert(len(list(mapKPhys)) == len(set(mapKPhys))), "Invalid solution: non-function"
         swapsK = filter(lambda s: s[3] == k, swaps)
+        
         justPhys = [s[:2] for s in swapsK]
         for (phys1,phys2) in justPhys:
             assert([phys1, phys2] in edges.tolist()), "Invalid solution: bad swap"
@@ -584,7 +704,7 @@ def toQasm(physNum, logNum, numCnots, swapNum, fname, progPath, cm, prevMap, sta
     mappedCirc = qiskit.QuantumCircuit(circ.num_qubits)
     cnotCount = 0 
     for j in range(len(circ)):
-        qubits = list(map(lambda q : qiskit.circuit.Qubit(q.register, logToPhys[(q.index,cnotCount)]), circ[j][1]))
+        qubits = list(map(lambda q : qiskit.circuit.Qubit(q.register, logToPhys[(q.index,min(cnotCount, numCnots-1))]), circ[j][1]))
         if circ[j][0].name == 'cx':
             if cnotCount in swapIndices:
                 swapsK = filter(lambda s: s[3] == cnotCount, swaps)
@@ -592,7 +712,6 @@ def toQasm(physNum, logNum, numCnots, swapNum, fname, progPath, cm, prevMap, sta
                     mappedCirc.swap(s[0], s[1])
             [c, t] = circ[j][1]
             logc, logt = c.index, t.index
-
             physc, physt = logToPhys[(logc, cnotCount)
                                      ], logToPhys[(logt, cnotCount)]
             assert([physc, physt] in edges.tolist()), "Invalid solution: unsatisfed cnot"
@@ -601,7 +720,7 @@ def toQasm(physNum, logNum, numCnots, swapNum, fname, progPath, cm, prevMap, sta
     finalMap = list(filter(lambda x: x[0][1] == numCnots, logToPhys.items()))
     return (mappedCirc, i, finalMap)
           
-def toQasmFF(progName, cm, swapNum, chunks, fname, swaps=None):
+def toQasmFF(progName, cm, swapNum, chunks, solSource,  swaps=None):
     pointer = 0
     physNum = len(cm)
     cnots = extractCNOTs(progName)
@@ -620,7 +739,10 @@ def toQasmFF(progName, cm, swapNum, chunks, fname, swaps=None):
         else: 
             end = layers[chunkSize*(i+1)]
         currentSize = end - layers[chunkSize*(i)]
-        (mapped_circ, gates, finalMap) = toQasm(physNum, logNum, currentSize, swapNum, fname + "-chnk" + str(i) + ".txt", progName, cm, prevMap, append_rest=is_last, start=pointer, swapList= swaps[i] if swaps else None)
+        if type(solSource) is str:  # i.e we are reading from a file
+            (mapped_circ, gates, finalMap) = toQasm(physNum, logNum, currentSize, swapNum, solSource + "-chnk" + str(i) + ".txt", progName, cm, prevMap, append_rest=is_last, start=pointer, swapList= swaps[i] if swaps else None) 
+        else: # we are reading from solvers
+            (mapped_circ, gates, finalMap) = toQasm(physNum, logNum, currentSize, swapNum, solSource[i], progName, cm, prevMap, append_rest=is_last, start=pointer, swapList= swaps[i] if swaps else None) 
         pointer = gates
         prevMap = finalMap
         circ.compose(mapped_circ, inplace=True)
@@ -638,14 +760,17 @@ def computeFidelity(circ, calibrationData):
     return fid
 
 
-def transpile(progname, cm, swapNum, cnfname, sname, slice_size=25, max_sat_time=600, routing=True, weighted=False, calibrationData = None):
+def transpile(progname, cm, swapNum=1, cnfname='test', sname='out', slice_size=25, max_sat_time=600, routing=True, weighted=False, calibrationData = None, bounded_above=True):
     chunks = -(len(extractCNOTs(progname)) // -slice_size)
     if routing:
         stats = solve(progname, cm, swapNum, chunks, pname=cnfname, sname=sname, time_wbo_max=max_sat_time, _calibrationData=calibrationData)
         return (stats, toQasmFF(os.path.join(os.path.split(progname)[0], "qiskit-"+os.path.split(progname)[1]),  cm, swapNum, chunks, sname))
+    elif bounded_above:
+     results = solve_bounded_above(progname, cm, swapNum, chunks, pname=cnfname, sname=sname)
+     return ((results['cost'], results['a_star_time']), toQasmFF(os.path.join(os.path.split(progname)[0], "qiskit-"+os.path.split(progname)[1]),  cm, swapNum, chunks, results['solvers'], swaps=results['swaps']))
     else: 
-      (cost, towbo, tastar, _swaps) = solve(progname, cm, swapNum, chunks, pname=cnfname, sname=sname, _routing=False, _weighted=weighted)
-      return ((cost, towbo, tastar), toQasmFF(os.path.join(os.path.split(progname)[0], "qiskit-"+os.path.split(progname)[1]),  cm, swapNum, chunks, sname, swaps=_swaps))
+      results = solve(progname, cm, swapNum, chunks, pname=cnfname, sname=sname, _routing=False, _weighted=weighted)
+      return ((results['cost'], results['time_wbo'], results['a_star_time']), toQasmFF(os.path.join(os.path.split(progname)[0], "qiskit-"+os.path.split(progname)[1]),  cm, swapNum, chunks, sname, swaps=results['swaps']))
 
 
         
@@ -686,7 +811,8 @@ if __name__ == "__main__":
         with open(args.arch) as f:
             arch = np.array(ast.literal_eval(f.read()))
     base, _ = os.path.splitext(os.path.basename(args.prog))
-    (stats, qasm) = transpile(args.prog, arch, 1, "prob_"+base, "sol_"+base, slice_size=args.k, max_sat_time=args.timeout, routing= not args.no_route, weighted= args.weighted, calibrationData=error_rates[args.err] if args.err else None )
+    #print(transpile(args.prog, arch, 1, "prob_"+base, "sol_"+base, slice_size=args.k, max_sat_time=args.timeout, routing= not args.no_route, weighted= args.weighted, calibrationData=error_rates[args.err] if args.err else None, bounded_above=False ))
+    (stats, qasm) = transpile(args.prog, arch, 1, "prob_"+base, "sol_"+base, slice_size=args.k, max_sat_time=args.timeout, routing= not args.no_route, weighted= args.weighted, calibrationData=error_rates[args.err] if args.err else None, bounded_above=True )
     print(stats)
     out_file = args.output_path if args.output_path else "mapped_"+os.path.basename(args.prog)
     with open(out_file, "w") as f:
