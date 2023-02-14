@@ -4,7 +4,7 @@
 # Dependencies
 
 + A C++ compiler, ``make``, and [GMP](https://gmplib.org/) to build the MaxSAT solver: [Open-WBO-Inc](https://github.com/sbjoshi/Open-WBO-Inc)
-+ Python 3.8 or later with the third-party packages ``qiskit``, ``scipy``, and ``pysat``, which can all be installed via ``pip``
++ Python 3.8 or later with the third-party packages ``qiskit``, ``scipy``, and ``pysat``, which can all be installed via ``pip`` or by running ``pip install -r requirements.txt``
 
 There is also a Docker image available [here](https://hub.docker.com/repository/docker/abtinm/qmapping) that provides a Ubuntu environment with the above preinstalled.
 
