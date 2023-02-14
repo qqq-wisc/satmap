@@ -33,6 +33,17 @@ def extractCNOTs(fname):
                 cnots.append((int(match.group(1)), int(match.group(2))))
     return cnots
 
+def extract2qubit(fname):
+    gates = []
+    circ = qiskit.QuantumCircuit.from_qasm_file(fname)
+    for j in range(len(circ)):
+        qubits = circ[j][1]
+        
+        if len(qubits) == 2:
+            gates.append([q.index for q in qubits])
+        elif len(qubits) > 2:
+            print('Warning: ignoring gate with more than 2 qubits')
+    return gates
 
 def extractQbits(fname):
     # Returns highest-value register used
@@ -431,7 +442,7 @@ def solve_bounded_above(progName, cm, swapNum, chunks, pname="test", sname="out"
     (head, tail) = os.path.split(progName)
     with open(os.path.join(head, "qiskit-" + tail), "w") as f:
         f.write(hack.qasm())
-    cnots = extractCNOTs(os.path.join(head, "qiskit-" + tail))
+    cnots = extract2qubit(os.path.join(head, "qiskit-" + tail))
     numCnots = len(cnots)
 
     layers= range(len(cnots))
@@ -526,7 +537,7 @@ def solve(progName, cm, swapNum, chunks, iterations=100, time_wbo_max = 600, qao
     (head, tail) = os.path.split(progName)
     with open(os.path.join(head, "qiskit-" + tail), "w") as f:
         f.write(hack.qasm())
-    cnots = extractCNOTs(os.path.join(head, "qiskit-" + tail))
+    cnots = extract2qubit(os.path.join(head, "qiskit-" + tail))
     sorted_cnots = sortCnots(logNum, cnots)
     numCnots = len(cnots)
 
@@ -703,7 +714,7 @@ def toQasm(physNum, logNum, numCnots, swapNum, solSource, progPath, cm, prevMap,
     cnotCount = 0 
     for j in range(len(circ)):
         qubits = list(map(lambda q : qiskit.circuit.Qubit(q.register, logToPhys[(q.index,min(cnotCount, numCnots-1))]), circ[j][1]))
-        if circ[j][0].name == 'cx':
+        if len(circ[j][1]) == 2:
             if cnotCount in swapIndices:
                 swapsK = filter(lambda s: s[3] == cnotCount, swaps)
                 for s in swapsK:
@@ -721,7 +732,7 @@ def toQasm(physNum, logNum, numCnots, swapNum, solSource, progPath, cm, prevMap,
 def toQasmFF(progName, cm, swapNum, chunks, solSource,  swaps=None):
     pointer = 0
     physNum = len(cm)
-    cnots = extractCNOTs(progName)
+    cnots = extract2qubit(progName)
     logNum = extractQbits(progName)
     numCnots = len(cnots)
     # layers = getLayers(cnots)
@@ -759,8 +770,12 @@ def computeFidelity(circ, calibrationData):
 
 
 def transpile(progname, cm, swapNum=1, cnfname='test', sname='out', slice_size=25, max_sat_time=600, routing=True, weighted=False, calibrationData = None, bounded_above=True):
-    chunks = -(len(extractCNOTs(progname)) // -slice_size)
-    if routing:
+    chunks = -(len(extract2qubit(progname)) // -slice_size)
+    if len(extract2qubit(progname)) == 0:
+        print('Exiting... circuit contains no two qubit gates')
+        with open(progname) as f:
+            return (None, f.read())
+    elif routing:
         stats = solve(progname, cm, swapNum, chunks, pname=cnfname, sname=sname, time_wbo_max=max_sat_time, _calibrationData=calibrationData)
         return (stats, toQasmFF(os.path.join(os.path.split(progname)[0], "qiskit-"+os.path.split(progname)[1]),  cm, swapNum, chunks, sname))
     elif bounded_above:
