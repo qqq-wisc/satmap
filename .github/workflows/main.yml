@@ -1,0 +1,20 @@
+name: CI
+on:
+  push:
+    branches: [ main ]
+jobs:
+  container-test-job:
+    runs-on: ubuntu-latest
+    container:
+      image: abtinm/qmapping:artifact
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+        with: 
+              submodules: 'true'
+      - name: build
+        run: | 
+             cd lib/Open-WBO-Inc/ 
+             make r
+             cd ${{ github.workspace }}
+             python3 src/satmap.py examples/jku_constraint_based/3_17_13.qasm
