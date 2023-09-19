@@ -6,7 +6,7 @@ jobs:
   container-test-job:
     runs-on: ubuntu-latest
     container:
-      image: abtinm/qmapping:artifact
+      image: abtinm/qmapping:ci
     steps:
       - name: checkout
         uses: actions/checkout@v3
