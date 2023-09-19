@@ -10,11 +10,12 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v3
-      - name: build
+      - name: submodule
         run: | 
              git config --global --add safe.directory '*'
              git submodule update --init --recursive
-             cd lib/Open-WBO-Inc/ 
-             make r
-             cd ${{ github.workspace }}
-             python3 src/satmap.py examples/jku_constraint_based/3_17_13.qasm
+      - name: build openwbo
+        run: make r
+        working-directory: lib/Open-WBO-Inc/
+      - name: test
+        run: python3 src/satmap.py examples/jku_constraint_based/3_17_13.qasm --arch tokyo
