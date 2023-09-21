@@ -1,5 +1,6 @@
 import argparse
 import ast
+import datetime
 import itertools
 import math
 import os
@@ -532,12 +533,15 @@ def solve(progName, cm, swapNum, chunks, iterations=100, time_wbo_max = 600, qao
     time_elapsed_wbo = 0
     physNum = len(cm)
     logNum = extractQbits(progName)
-    return_results = {}
+    os.makedirs("aux_files", exist_ok=True)
+    return_results['qubits'] = logNum
+    return_results["chunks"] = chunks 
     hack = qiskit.QuantumCircuit.from_qasm_file(progName)
     (head, tail) = os.path.split(progName)
-    with open(os.path.join(head, "qiskit-" + tail), "w") as f:
+    return_results['circuit_name'] = tail
+    with open(os.path.join("aux_files", "qiskit-" + tail), "w") as f:
         f.write(hack.qasm())
-    cnots = extract2qubit(os.path.join(head, "qiskit-" + tail))
+    cnots = extract2qubit(os.path.join("aux_files", "qiskit-" + tail))
     sorted_cnots = sortCnots(logNum, cnots)
     numCnots = len(cnots)
 
@@ -777,13 +781,13 @@ def transpile(progname, cm, swapNum=1, cnfname='test', sname='out', slice_size=2
             return (None, f.read())
     elif routing:
         stats = solve(progname, cm, swapNum, chunks, pname=cnfname, sname=sname, time_wbo_max=max_sat_time, _calibrationData=calibrationData)
-        return (stats, toQasmFF(os.path.join(os.path.split(progname)[0], "qiskit-"+os.path.split(progname)[1]),  cm, swapNum, chunks, sname))
+        return (stats, toQasmFF(os.path.join("aux_files", "qiskit-"+os.path.split(progname)[1]),  cm, swapNum, chunks, sname))
     elif bounded_above:
      results = solve_bounded_above(progname, cm, swapNum, chunks, pname=cnfname, sname=sname)
-     return ((results['cost'], results['a_star_time']), toQasmFF(os.path.join(os.path.split(progname)[0], "qiskit-"+os.path.split(progname)[1]),  cm, swapNum, chunks, results['solvers'], swaps=results['swaps']))
+     return ((results['cost'], results['a_star_time']), toQasmFF(os.path.join("aux_files", "qiskit-"+os.path.split(progname)[1]),  cm, swapNum, chunks, results['solvers'], swaps=results['swaps']))
     else: 
       results = solve(progname, cm, swapNum, chunks, pname=cnfname, sname=sname, _routing=False, _weighted=weighted)
-      return ((results['cost'], results['time_wbo'], results['a_star_time']), toQasmFF(os.path.join(os.path.split(progname)[0], "qiskit-"+os.path.split(progname)[1]),  cm, swapNum, chunks, sname, swaps=results['swaps']))
+      return ((results['cost'], results['time_wbo'], results['a_star_time']), toQasmFF(os.path.join("aux_files", "qiskit-"+os.path.split(progname)[1]),  cm, swapNum, chunks, sname, swaps=results['swaps']))
 
 
         
@@ -825,9 +829,17 @@ if __name__ == "__main__":
             arch = np.array(ast.literal_eval(f.read()))
     base, _ = os.path.splitext(os.path.basename(args.prog))
     #print(transpile(args.prog, arch, 1, "prob_"+base, "sol_"+base, slice_size=args.k, max_sat_time=args.timeout, routing= not args.no_route, weighted= args.weighted, calibrationData=error_rates[args.err] if args.err else None, bounded_above=False ))
-    (stats, qasm) = transpile(args.prog, arch, 1, "prob_"+base, "sol_"+base, slice_size=args.k, max_sat_time=args.timeout, routing= not args.no_route, weighted= args.weighted, calibrationData=error_rates[args.err] if args.err else None, bounded_above=True )
-    print(stats)
+    (stats, qasm) = transpile(args.prog, arch, 1, os.path.join("aux_files", "prob_"+base), os.path.join("aux_files", "sol_"+base), slice_size=args.k, max_sat_time=args.timeout, routing= not args.no_route, weighted= args.weighted, calibrationData=error_rates[args.err] if args.err else None, bounded_above=True )
+    if args.arch in archs:
+        stats["arch"] = args.arch
+    else:
+        stats['arch'] = f"custom arch with {len(arch)} qubits"
+    post_fix = str(datetime.datetime.now()).replace(" ", "_")
+    os.makedirs(f"results_{post_fix}", exist_ok =True)
+    with open(f"results_{post_fix}/data.txt", "w") as f:
+        f.write(str(stats))
     out_file = args.output_path if args.output_path else "mapped_"+os.path.basename(args.prog)
-    with open(out_file, "w") as f:
-        f.write(qasm) 
- 
+    if out_file != "no_qasm":
+        with open(out_file, "w") as f:
+            f.write(qasm) 
+    
