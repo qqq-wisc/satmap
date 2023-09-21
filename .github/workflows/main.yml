@@ -19,3 +19,5 @@ jobs:
         working-directory: lib/Open-WBO-Inc/
       - name: test
         run: python3 src/satmap.py examples/jku_constraint_based/3_17_13.qasm --arch tokyo -o_p no_qasm
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
