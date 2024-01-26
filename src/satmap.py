@@ -63,6 +63,7 @@ if __name__ == "__main__":
             arch = np.array(ast.literal_eval(f.read()))
     hybrid = args.hybrid
     base, _ = os.path.splitext(os.path.basename(args.prog))
+    os.makedirs(f"aux_files", exist_ok =True)
     #print(transpile(args.prog, arch, 1, "prob_"+base, "sol_"+base, slice_size=args.k, max_sat_time=args.timeout, routing= not args.no_route, weighted= args.weighted, calibrationData=error_rates[args.err] if args.err else None, bounded_above=False ))
     (stats, qasm) = transpile(args.prog, arch, 1, os.path.join("aux_files", "prob_"+base), os.path.join("aux_files", "sol_"+base), slice_size=args.k, max_sat_time=args.timeout, routing= not args.no_route, weighted= args.weighted, calibrationData=error_rates[args.err] if args.err else None, bounded_above=True, hybrid=hybrid)
     print(stats)
@@ -70,9 +71,7 @@ if __name__ == "__main__":
         stats["arch"] = args.arch
     else:
         stats['arch'] = f"custom arch with {len(arch)} qubits"
-    post_fix = str(datetime.datetime.now()).replace(" ", "_")
-    os.makedirs(f"results_{post_fix}", exist_ok =True)
-    with open(f"results_{post_fix}/data.txt", "w") as f:
+    with open(f"stats_{base}.txt", "w") as f:
         f.write(str(stats))
     out_file = args.output_path if args.output_path else "mapped_"+os.path.basename(args.prog)
     if out_file != "no_qasm":
