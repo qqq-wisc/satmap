@@ -44,7 +44,8 @@ For example, to use a triangle connectivity graph:
     [[0,1,0], [0,0,1], [1,0,0]]
     $ python3 src/satmap.py circ.qasm --arch triangle.txt
  ```
-
+# Hybrid Mode (New!)
+SATMap now includes a ''hybrid'' solving mode designed as a compromise between heuristic and constraint-based approaches. The hybrid mode (implemented in ``satmap_hybrid.py``) uses SABRE to generate a candidate solution, then performs an iterative SAT-based local search to try to improve upon this initial seed. To use hybrid mode, invoke SATMap with the option ``--hybrid <search-strategey>`` where ``<search-strategey>`` is one of the local exploration strategies: ``vertically``, ``horizontally``, or ``horizontal_sliding_window``. 
 # References
 [1] Abtin Molavi, Amanda Xu, Martin Diges, Lauren Pick, Swamit Tannu, Aws Albarghouthi. “Qubit
 mapping and routing via MaxSAT.” *Proceedings of the 55th IEEE/ACM International Symposium
